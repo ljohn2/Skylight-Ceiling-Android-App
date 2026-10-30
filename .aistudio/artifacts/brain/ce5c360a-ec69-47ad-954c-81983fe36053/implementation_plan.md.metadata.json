@@ -1,6 +1,0 @@
-{
-  "summary":  "Implementation plan for adding a Live Ceiling Radar Preview screen on the phone connected directly to the Raspberry Pi local APIs. Includes real-time radar Canvas drawing, projection mirroring support, aircraft telemetry blips, range rings, and interactive target inspection.",
-  "updatedAt":  "2026-10-30T18:15:29.536031877Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}
