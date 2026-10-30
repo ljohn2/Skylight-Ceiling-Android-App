@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Skylight</string>
+    <string name="title_control">Skylight Pi Control</string>
+    <string name="subtitle_control">Tune your Raspberry Pi ceiling projector over LAN</string>
+    <string name="label_pi_host">Raspberry Pi Server URL</string>
+    <string name="btn_connect_pi">Sync</string>
+    <string name="btn_save_profile">Save Current</string>
+    <string name="btn_center_traffic">Center on Traffic</string>
+    <string name="btn_import_runways">Import Runways</string>
+    <string name="btn_reset_config">Reset Pi Config to Defaults</string>
+    <string name="label_planetarium_mode">Planetarium Mode (Sky Only, No Planes)</string>
+    <string name="label_altitude_color">Color Aircraft by Altitude</string>
+    <string name="label_range_rings">Range Rings</string>
+    <string name="label_compass">Compass Ticks</string>
+    <string name="label_highlight_emergency">Highlight Emergency Squawks (7500/7600/7700)</string>
+    <string name="label_airport_runways">Airport Runways Overlay</string>
+    <string name="label_show_hud">On-Screen Calibration HUD</string>
+    <string name="label_dest_arcs">Destination Great-Circle Arc</string>
+    <string name="label_route_detail">Destination Local Time &amp; Distance</string>
+    <string name="label_stars">Bright Stars</string>
+    <string name="label_sun">Sun Position</string>
+    <string name="label_moon">Moon &amp; Lunar Phase</string>
+    <string name="label_planets">Naked-Eye Planets</string>
+    <string name="label_satellites">Satellites &amp; ISS</string>
+    <string name="label_satellite_labels">Label Non-ISS Satellites</string>
+    <string name="label_sky_events">Upcoming Sky Events Nudge</string>
+    <string name="label_mirror_x">Mirror Horizontal (Looking-Up Flip)</string>
+    <string name="label_mirror_y">Mirror Vertical</string>
+    <string name="label_hide_on_ground">Hide Aircraft on Ground</string>
+    <string name="label_interpolate">Smooth 60fps Interpolation</string>
+    <string name="label_telemetry_ping">Anonymous Daily Usage Ping</string>
+</resources>

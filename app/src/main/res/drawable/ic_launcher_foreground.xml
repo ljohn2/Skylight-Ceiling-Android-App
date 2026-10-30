@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer radar ring -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#3B82F6"
+        android:strokeWidth="2.5"
+        android:pathData="M54,24 A30,30 0 1,1 53.9,24 Z" />
+    <!-- Swept-wing aircraft silhouette centered in 66dp safe zone -->
+    <path
+        android:fillColor="#E8ECFF"
+        android:pathData="M54,28 L57.5,38 L57.5,48 L76,58 L76,62.5 L57.5,56.5 L57.5,68 L65,73.5 L65,77 L54,74 L43,77 L43,73.5 L50.5,68 L50.5,56.5 L32,62.5 L32,58 L50.5,48 L50.5,38 Z" />
+    <!-- Star accent -->
+    <path
+        android:fillColor="#FFBF66"
+        android:pathData="M36,34 L38,38 L42,40 L38,42 L36,46 L34,42 L30,40 L34,38 Z" />
+</vector>

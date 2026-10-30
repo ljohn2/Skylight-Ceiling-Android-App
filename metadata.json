@@ -1,0 +1,8 @@
+{
+  "name": "Skylight",
+  "description": "Native Android remote control panel for a Skylight Raspberry Pi ceiling projector.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
