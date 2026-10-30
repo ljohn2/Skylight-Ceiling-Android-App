@@ -1,6 +1,6 @@
 # Skylight — Raspberry Pi Remote Control Panel (Android)
 
-Native Android remote control application for a **Skylight** [Raspberry Pi](https://github.com/cpaczek/skylight) projector hub (`skylight-server`), built with **Kotlin** and **Jetpack Compose** (Material 3) with zero `WebView` components.
+Native Android remote control application for a **Skylight** [**Skylight** Raspberry Pi](https://github.com/cpaczek/skylight) projector hub (`skylight-server`), built with **Kotlin** and **Jetpack Compose** (Material 3) with zero `WebView` components.
 
 ## Overview
 
