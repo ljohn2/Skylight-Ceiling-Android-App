@@ -6,12 +6,12 @@ plugins {
 
 android {
     namespace = "com.example.skylight"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.aistudio.skylight.rpkxqm"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 12
         versionName = "12.0"
 
