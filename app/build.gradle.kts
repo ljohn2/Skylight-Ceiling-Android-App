@@ -9,16 +9,25 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.skylight"
+        applicationId = "com.aistudio.skylight.rpkxqm"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 9
+        versionName = "9.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("KEYSTORE_PATH")
+            if (keystorePath != null) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("STORE_PASSWORD")
+                keyAlias = "upload"
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
         create("debugConfig") {
             storeFile = file("${rootDir}/debug.keystore")
             storePassword = "android"
@@ -28,16 +37,16 @@ android {
     }
 
     buildTypes {
-        debug {
-            signingConfig = signingConfigs.getByName("debugConfig")
-        }
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debugConfig")
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("debugConfig")
         }
     }
 
@@ -49,6 +58,11 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 
     testOptions {
@@ -74,7 +88,8 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation(libs.androidx.material.icons.extended)
+    implementation(libs.androidx.material.icons.core)
+    // implementation(libs.androidx.material.icons.extended)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)

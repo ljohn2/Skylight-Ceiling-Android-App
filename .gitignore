@@ -1,27 +1,12 @@
-# Android / Gradle
 .gradle/
 .kotlin/
-build/
-app/build/
 local.properties
-*.apk
-*.aab
-*.ap_
-*.dex
-captures/
-output.json
-
-# IDE / OS
 .idea/
 *.iml
 .vscode/
 .DS_Store
-
-# Environment & Secrets
 .env
 .env.local
-
-# Node / Build Cache
 node_modules/
 dist/
 *.log

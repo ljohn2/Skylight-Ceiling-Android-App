@@ -35,12 +35,16 @@ data class GeocodeResult(
 class PiControlClient {
     private val userAgent = "skylight-android-control/1.0"
 
-    private fun normalizeBaseUrl(rawUrl: String): String {
-        val trimmed = rawUrl.trim().removeSuffix("/")
-        return if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            trimmed
+    fun normalizeBaseUrl(rawUrl: String): String {
+        val fallback = rawUrl.trim().ifBlank { DEFAULT_PI_URL }
+        val withoutPath = fallback
+            .removeSuffix("/")
+            .removeSuffix("/control")
+            .removeSuffix("/")
+        return if (withoutPath.startsWith("http://") || withoutPath.startsWith("https://")) {
+            withoutPath
         } else {
-            "http://$trimmed"
+            "http://$withoutPath"
         }
     }
 
@@ -240,6 +244,21 @@ class PiControlClient {
     }
 
     companion object {
+        const val DEFAULT_PI_URL = "http://skylight.local:3000"
+        val PI_URL_PRESETS = listOf(
+            "http://skylight.local:3000"
+        )
+
+        fun isExcludedUrl(url: String): Boolean {
+            val clean = url.trim().lowercase().removeSuffix("/")
+            return clean == "http://skylight.local" ||
+                   clean == "https://skylight.local" ||
+                   clean == "skylight.local" ||
+                   clean == "upload" ||
+                   clean == "http://upload" ||
+                   clean.contains("raspberrypi.local")
+        }
+
         fun parseStatusJson(json: JSONObject): PiSourceStatus {
             return PiSourceStatus(
                 source = DataSourceType.fromWire(json.optString("source", "radio")),

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,13 +21,16 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BookmarkAdd
-import androidx.compose.material.icons.filled.CenterFocusStrong
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -44,6 +48,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,8 +61,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.skylight.R
+import com.example.skylight.data.PiControlClient
 import com.example.skylight.model.AggregatorPresets
 import com.example.skylight.model.AirportsCatalog
 import com.example.skylight.model.AltitudeUnit
@@ -92,6 +100,8 @@ fun ControlPanelScreen(
     uiState: SkylightControlUiState,
     onSetPiUrl: (String) -> Unit,
     onSyncWithPi: () -> Unit,
+    onAddSavedUrl: (String) -> Unit = {},
+    onRemoveSavedUrl: (String) -> Unit = {},
     onUpdateConfig: ((SkylightConfig) -> SkylightConfig) -> Unit,
     onSwitchSource: (DataSourceType) -> Unit,
     onSearchLocation: (String) -> Unit,
@@ -108,6 +118,8 @@ fun ControlPanelScreen(
     val scrollState = rememberScrollState()
     var locationInput by remember { mutableStateOf("") }
     var airportCodeInput by remember(cfg.airport.icao) { mutableStateOf(cfg.airport.icao) }
+    var showAddUrlDialog by remember { mutableStateOf(false) }
+    var customUrlInput by remember { mutableStateOf("") }
 
     Box(
         modifier = modifier
@@ -175,19 +187,27 @@ fun ControlPanelScreen(
                 }
             }
 
-            // 0. Raspberry Pi Server Connection Card
-            ControlSectionCard(title = "RASPBERRY PI CONNECTION") {
+            // 0. Raspberry Pi Server URL & Connection Card
+            ControlSectionCard(title = "RASPBERRY PI URL CONFIG") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedTextField(
-                        value = uiState.piUrl,
-                        onValueChange = onSetPiUrl,
+                        value = if (uiState.piUrl.equals("upload", ignoreCase = true)) "" else uiState.piUrl,
+                        onValueChange = { input ->
+                            if (!input.equals("upload", ignoreCase = true)) {
+                                onSetPiUrl(input)
+                            }
+                        },
                         label = { Text(stringResource(R.string.label_pi_host)) },
                         placeholder = { Text("http://skylight.local:3000") },
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Uri,
+                            autoCorrect = false
+                        ),
                         modifier = Modifier
                             .weight(1f)
                             .testTag("pi_url_input")
@@ -201,7 +221,7 @@ fun ControlPanelScreen(
                         modifier = Modifier.testTag("sync_pi_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Sync,
+                            imageVector = Icons.Default.Refresh,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )
@@ -211,6 +231,177 @@ fun ControlPanelScreen(
                             fontWeight = FontWeight.SemiBold
                         )
                     }
+                }
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.label_saved_urls).uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MutedSlate
+                        )
+
+                        val currentTrimmed = uiState.piUrl.trim().removeSuffix("/")
+                        if (currentTrimmed.isNotBlank() && currentTrimmed !in uiState.savedUrls && !PiControlClient.isExcludedUrl(currentTrimmed)) {
+                            Text(
+                                text = "+ Save \"$currentTrimmed\"",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = AltitudeGold,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .clickable { onAddSavedUrl(currentTrimmed) }
+                                    .testTag("save_current_url_btn")
+                            )
+                        }
+                    }
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        uiState.savedUrls.filterNot { PiControlClient.isExcludedUrl(it) }.forEach { savedUrl ->
+                            FilterChip(
+                                selected = uiState.piUrl.trim().removeSuffix("/") == savedUrl,
+                                onClick = {
+                                    onSetPiUrl(savedUrl)
+                                    onSyncWithPi()
+                                },
+                                label = {
+                                    Text(
+                                        text = savedUrl,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp
+                                    )
+                                },
+                                trailingIcon = {
+                                    IconButton(
+                                        onClick = { onRemoveSavedUrl(savedUrl) },
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .testTag(
+                                                "remove_url_${savedUrl.replace(Regex("[^a-zA-Z0-9]"), "_")}"
+                                            )
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Remove $savedUrl",
+                                            tint = MutedSlate,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.testTag(
+                                    "pi_url_preset_${savedUrl.replace(Regex("[^a-zA-Z0-9]"), "_")}"
+                                )
+                            )
+                        }
+
+                        AssistChip(
+                            onClick = {
+                                customUrlInput = if (uiState.piUrl.isNotBlank() && uiState.piUrl !in uiState.savedUrls && !PiControlClient.isExcludedUrl(uiState.piUrl)) {
+                                    uiState.piUrl
+                                } else {
+                                    "http://"
+                                }
+                                showAddUrlDialog = true
+                            },
+                            label = {
+                                Text(
+                                    text = stringResource(R.string.btn_add_saved_url),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = TelemetryCyan
+                                )
+                            },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = ElevatedCockpitSurface,
+                                labelColor = TelemetryCyan
+                            ),
+                            modifier = Modifier.testTag("add_custom_url_chip")
+                        )
+                    }
+                }
+
+                if (showAddUrlDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showAddUrlDialog = false },
+                        title = {
+                            Text(
+                                text = stringResource(R.string.dialog_add_url_title),
+                                color = LuminousIce,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = "Enter the host or IP address of your Raspberry Pi:",
+                                    color = MutedSlate,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                OutlinedTextField(
+                                    value = customUrlInput,
+                                    onValueChange = { customUrlInput = it },
+                                    placeholder = { Text(stringResource(R.string.dialog_add_url_hint)) },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("custom_url_input")
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val trimmed = customUrlInput.trim().removeSuffix("/")
+                                    if (trimmed.isNotBlank() && !PiControlClient.isExcludedUrl(trimmed)) {
+                                        val finalUrl = if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+                                            "http://$trimmed"
+                                        } else {
+                                            trimmed
+                                        }
+                                        if (!PiControlClient.isExcludedUrl(finalUrl)) {
+                                            onAddSavedUrl(finalUrl)
+                                            onSetPiUrl(finalUrl)
+                                            onSyncWithPi()
+                                        }
+                                    }
+                                    showAddUrlDialog = false
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = TelemetryCyan,
+                                    contentColor = ObsidianBlack
+                                ),
+                                modifier = Modifier.testTag("confirm_add_url_button")
+                            ) {
+                                Text(stringResource(R.string.btn_save))
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = { showAddUrlDialog = false },
+                                modifier = Modifier.testTag("cancel_add_url_button")
+                            ) {
+                                Text(stringResource(R.string.btn_cancel), color = MutedSlate)
+                            }
+                        },
+                        containerColor = DeepSpaceSurface,
+                        shape = RoundedCornerShape(16.dp)
+                    )
                 }
 
                 if (uiState.status.message != null) {
@@ -291,7 +482,7 @@ fun ControlPanelScreen(
                             .weight(1f)
                             .testTag("save_profile_button")
                     ) {
-                        Icon(Icons.Default.BookmarkAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(stringResource(R.string.btn_save_profile))
                     }
@@ -301,7 +492,7 @@ fun ControlPanelScreen(
                             .weight(1f)
                             .testTag("center_traffic_button")
                     ) {
-                        Icon(Icons.Default.CenterFocusStrong, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(stringResource(R.string.btn_center_traffic))
                     }
@@ -342,7 +533,7 @@ fun ControlPanelScreen(
                                             .testTag("delete_profile_${profile.id}")
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.DeleteOutline,
+                                            imageVector = Icons.Default.Delete,
                                             contentDescription = "Remove ${profile.name}",
                                             tint = MutedSlate,
                                             modifier = Modifier.size(18.dp)
@@ -957,7 +1148,7 @@ fun ControlPanelScreen(
                     }
                 }
                 Slider(
-                    value = cfg.skyTimeOffsetMin.toFloat(),
+                    value = cfg.skyTimeOffsetMin.toFloat().coerceIn(-720f, 720f),
                     onValueChange = { v -> onUpdateConfig { it.copy(skyTimeOffsetMin = v.roundToInt()) } },
                     valueRange = -720f..720f,
                     modifier = Modifier.testTag("sky_clock_slider")
@@ -979,7 +1170,7 @@ fun ControlPanelScreen(
                         .fillMaxWidth()
                         .testTag("reset_config_button")
                 ) {
-                    Icon(Icons.Default.RestartAlt, contentDescription = null)
+                    Icon(Icons.Default.Refresh, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.btn_reset_config))
                 }
@@ -1044,7 +1235,7 @@ private fun LabeledSlider(
             )
         }
         Slider(
-            value = value,
+            value = value.coerceIn(valueRange.start, valueRange.endInclusive),
             onValueChange = onValueChange,
             valueRange = valueRange,
             modifier = Modifier.testTag(tag)
