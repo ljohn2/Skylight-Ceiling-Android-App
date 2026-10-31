@@ -7,6 +7,9 @@
     <string name="btn_connect_pi">Sync</string>
     <string name="btn_save_profile">Save Current</string>
     <string name="btn_center_traffic">Center on Traffic</string>
+    <string name="btn_precise_location">Precise Location</string>
+    <string name="label_latitude">Latitude</string>
+    <string name="label_longitude">Longitude</string>
     <string name="btn_import_runways">Import Runways</string>
     <string name="btn_reset_config">Reset Pi Config to Defaults</string>
     <string name="label_planetarium_mode">Planetarium Mode (Sky Only, No Planes)</string>

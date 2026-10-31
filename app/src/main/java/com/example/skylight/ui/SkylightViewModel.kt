@@ -4,7 +4,6 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.skylight.BuildConfig
 import com.example.skylight.data.PiControlClient
 import com.example.skylight.data.RadioDebugClient
 import com.example.skylight.data.RadioFetchResult
@@ -31,8 +30,12 @@ enum class AppScreen {
     RADIO_DEBUG
 }
 
-val DEFAULT_SKYLIGHT_URL: String =
-    BuildConfig.SKYLIGHT_PI_URL.ifBlank { PiControlClient.DEFAULT_PI_URL }
+enum class DebugSourceMode {
+    RADIO_DUMP,
+    WEB_FEED
+}
+
+const val DEFAULT_SKYLIGHT_URL: String = PiControlClient.DEFAULT_PI_URL
 
 val DEFAULT_SAVED_URLS: List<String> = PiControlClient.PI_URL_PRESETS
 
@@ -45,11 +48,20 @@ data class SkylightControlUiState(
     val status: PiSourceStatus = PiSourceStatus(),
     val config: SkylightConfig = SkylightConfig(),
     val feedbackMessage: String? = null,
+    val debugMode: DebugSourceMode = DebugSourceMode.RADIO_DUMP,
     val radioUrl: String = RadioDebugClient.DEFAULT_RADIO_URL,
     val radioLoading: Boolean = false,
     val radioAutoRefresh: Boolean = false,
     val radioSnapshot: RadioDebugSnapshot? = null,
     val radioError: String? = null,
+    val webFeedUrl: String = "https://opendata.adsb.fi/api/v3/lat/37.6213/lon/-122.3790/dist/25",
+    val webFeedLoading: Boolean = false,
+    val webFeedAutoRefresh: Boolean = false,
+    val webFeedSnapshot: RadioDebugSnapshot? = null,
+    val webFeedError: String? = null,
+    val radarSnapshot: RadioDebugSnapshot? = null,
+    val radarLoading: Boolean = false,
+    val radarError: String? = null,
     val radarZoomMiles: Double = 25.0,
     val selectedAircraftHex: String? = null,
     val radarPolling: Boolean = true
@@ -59,22 +71,10 @@ class SkylightViewModel(
     application: Application
 ) : AndroidViewModel(application) {
 
-    private var client: PiControlClient = PiControlClient()
-    private var radioClient: RadioDebugClient = RadioDebugClient()
+    private val client: PiControlClient = PiControlClient()
+    private val radioClient: RadioDebugClient = RadioDebugClient()
     private var radioJob: Job? = null
-
-    constructor(application: Application, client: PiControlClient) : this(application) {
-        this.client = client
-    }
-
-    constructor(
-        application: Application,
-        client: PiControlClient,
-        radioClient: RadioDebugClient
-    ) : this(application) {
-        this.client = client
-        this.radioClient = radioClient
-    }
+    private var webFeedJob: Job? = null
 
     private val prefs = application.getSharedPreferences("skylight_prefs", Context.MODE_PRIVATE)
 
@@ -87,11 +87,24 @@ class SkylightViewModel(
         }
     }
 
+    private val initialConfig = SkylightConfig()
+
+    private fun deriveWebFeedUrl(cfg: SkylightConfig, distMiles: Double = 25.0): String {
+        return RadioDebugClient.formatApiUrl(
+            template = cfg.apiUrl,
+            lat = cfg.centerLat,
+            lon = cfg.centerLon,
+            distMiles = distMiles
+        )
+    }
+
     private val _uiState = MutableStateFlow(
         SkylightControlUiState(
             piUrl = initialPiUrl,
             savedUrls = loadSavedUrls(),
-            radioUrl = RadioDebugClient.deriveRadioUrl(initialPiUrl)
+            config = initialConfig,
+            radioUrl = RadioDebugClient.deriveRadioUrl(initialPiUrl),
+            webFeedUrl = deriveWebFeedUrl(initialConfig, 25.0)
         )
     )
     val uiState: StateFlow<SkylightControlUiState> = _uiState.asStateFlow()
@@ -182,7 +195,7 @@ class SkylightViewModel(
 
     fun setPiUrl(url: String) {
         val clean = url.trim()
-        if (clean.equals("upload", ignoreCase = true) || PiControlClient.isExcludedUrl(clean)) {
+        if (PiControlClient.isExcludedUrl(clean)) {
             return
         }
         val derivedRadio = RadioDebugClient.deriveRadioUrl(clean)
@@ -203,10 +216,6 @@ class SkylightViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isSyncing = true, feedbackMessage = null) }
             val url = _uiState.value.piUrl
-            if (url.equals("upload", ignoreCase = true)) {
-                _uiState.update { it.copy(piUrl = DEFAULT_SKYLIGHT_URL, isSyncing = false) }
-                return@launch
-            }
             val remoteCfg = client.fetchConfig(url)
             val remoteStatus = client.fetchStatus(url)
             if (remoteCfg != null) {
@@ -215,6 +224,7 @@ class SkylightViewModel(
                         piConnected = true,
                         isSyncing = false,
                         config = remoteCfg,
+                        webFeedUrl = deriveWebFeedUrl(remoteCfg, it.radarZoomMiles),
                         status = remoteStatus ?: it.status,
                         feedbackMessage = "Connected to Raspberry Pi at $url"
                     )
@@ -240,13 +250,25 @@ class SkylightViewModel(
             } else {
                 state.radarZoomMiles
             }
-            state.copy(config = nextCfg, radarZoomMiles = updatedZoom)
+            val syncedWebFeedUrl = deriveWebFeedUrl(nextCfg, updatedZoom)
+            state.copy(
+                config = nextCfg,
+                radarZoomMiles = updatedZoom,
+                webFeedUrl = syncedWebFeedUrl,
+                webFeedError = null
+            )
         }
         val url = _uiState.value.piUrl
         viewModelScope.launch {
             val synced = client.patchConfig(url, nextCfg)
             if (synced != null) {
-                _uiState.update { it.copy(piConnected = true, config = synced) }
+                _uiState.update {
+                    it.copy(
+                        piConnected = true,
+                        config = synced,
+                        webFeedUrl = deriveWebFeedUrl(synced, it.radarZoomMiles)
+                    )
+                }
             }
         }
     }
@@ -257,7 +279,9 @@ class SkylightViewModel(
                 status = state.status.copy(source = source)
             )
         }
-        fetchRadioDebug()
+        if (_uiState.value.currentScreen == AppScreen.LIVE_RADAR) {
+            fetchLiveRadarFeed()
+        }
         val url = _uiState.value.piUrl
         viewModelScope.launch {
             val remoteStatus = client.setSource(url, source)
@@ -274,6 +298,21 @@ class SkylightViewModel(
                     it.copy(feedbackMessage = "Selected ${source.label}")
                 }
             }
+        }
+    }
+
+    fun toggleFeedSource() {
+        val nextSource = if (_uiState.value.status.source == DataSourceType.RADIO) {
+            DataSourceType.API
+        } else {
+            DataSourceType.RADIO
+        }
+        switchDataSource(nextSource)
+    }
+
+    fun toggleMirrorX() {
+        updateConfig { cfg ->
+            cfg.copy(mirrorX = !cfg.mirrorX)
         }
     }
 
@@ -297,6 +336,27 @@ class SkylightViewModel(
                 _uiState.update { it.copy(feedbackMessage = "No match for \"$query\"") }
             }
         }
+    }
+
+    fun setPreciseLocation(lat: Double, lon: Double, isPreciseGps: Boolean = true) {
+        val clampedLat = lat.coerceIn(-90.0, 90.0)
+        val clampedLon = lon.coerceIn(-180.0, 180.0)
+        val formattedCoords = String.format(java.util.Locale.US, "%.4f, %.4f", clampedLat, clampedLon)
+        val label = if (isPreciseGps) "Precise GPS ($formattedCoords)" else "Custom ($formattedCoords)"
+        updateConfig { cfg ->
+            cfg.copy(
+                centerLat = clampedLat,
+                centerLon = clampedLon,
+                locationName = label
+            )
+        }
+        _uiState.update {
+            it.copy(feedbackMessage = "Location updated to $formattedCoords")
+        }
+    }
+
+    fun setFeedbackMessage(message: String) {
+        _uiState.update { it.copy(feedbackMessage = message) }
     }
 
     fun importAirportRunways(code: String) {
@@ -401,6 +461,7 @@ class SkylightViewModel(
             _uiState.update {
                 it.copy(
                     config = fresh,
+                    webFeedUrl = deriveWebFeedUrl(fresh, it.radarZoomMiles),
                     feedbackMessage = "Reset configuration to defaults"
                 )
             }
@@ -413,15 +474,21 @@ class SkylightViewModel(
         _uiState.update { it.copy(currentScreen = screen) }
         when (screen) {
             AppScreen.LIVE_RADAR -> {
-                fetchRadioDebug()
+                fetchLiveRadarFeed()
                 if (_uiState.value.radarPolling) {
                     startRadarLoop()
                 }
             }
             AppScreen.RADIO_DEBUG -> {
                 liveRadarJob?.cancel()
-                if (_uiState.value.radioSnapshot == null) {
-                    fetchRadioDebug()
+                if (_uiState.value.debugMode == DebugSourceMode.RADIO_DUMP) {
+                    if (_uiState.value.radioSnapshot == null) {
+                        fetchRadioDump()
+                    }
+                } else {
+                    if (_uiState.value.webFeedSnapshot == null) {
+                        fetchWebFeed()
+                    }
                 }
             }
             AppScreen.CONTROL_PANEL -> {
@@ -432,12 +499,19 @@ class SkylightViewModel(
 
     fun navigateBack() {
         liveRadarJob?.cancel()
+        radioJob?.cancel()
+        webFeedJob?.cancel()
         _uiState.update { it.copy(currentScreen = AppScreen.CONTROL_PANEL) }
     }
 
     fun setRadarZoom(miles: Double) {
         val clamped = miles.coerceIn(3.0, 150.0)
-        _uiState.update { it.copy(radarZoomMiles = clamped) }
+        _uiState.update {
+            it.copy(
+                radarZoomMiles = clamped,
+                webFeedUrl = deriveWebFeedUrl(it.config, clamped)
+            )
+        }
     }
 
     fun zoomInRadar() {
@@ -465,8 +539,24 @@ class SkylightViewModel(
         liveRadarJob?.cancel()
         liveRadarJob = viewModelScope.launch {
             while (isActive) {
-                fetchRadioDebug()
+                fetchLiveRadarFeed()
                 delay(1500L)
+            }
+        }
+    }
+
+    fun setDebugMode(mode: DebugSourceMode) {
+        _uiState.update { it.copy(debugMode = mode) }
+        when (mode) {
+            DebugSourceMode.RADIO_DUMP -> {
+                if (_uiState.value.radioSnapshot == null) {
+                    fetchRadioDump()
+                }
+            }
+            DebugSourceMode.WEB_FEED -> {
+                if (_uiState.value.webFeedSnapshot == null) {
+                    fetchWebFeed()
+                }
             }
         }
     }
@@ -480,47 +570,113 @@ class SkylightViewModel(
         }
     }
 
-    fun fetchRadioDebug() {
+    fun setWebFeedUrl(url: String) {
+        val trimmed = url.trim()
+        _uiState.update { state ->
+            val formatted = if (trimmed.contains("{lat}") || trimmed.contains("{lon}") || trimmed.contains("{r}")) {
+                RadioDebugClient.formatApiUrl(
+                    template = trimmed,
+                    lat = state.config.centerLat,
+                    lon = state.config.centerLon,
+                    distMiles = state.radarZoomMiles
+                )
+            } else {
+                trimmed
+            }
+            state.copy(webFeedUrl = formatted, webFeedError = null)
+        }
+    }
+
+    /**
+     * Strictly pulls telemetry from the local ADS-B radio receiver dump only (no web feed, no mock fallback).
+     * Mirroring cpaczek/skylight: queries aircraft.json directly without /api/aircraft or web proxying.
+     */
+    fun fetchRadioDump() {
         viewModelScope.launch {
             _uiState.update { it.copy(radioLoading = true, radioError = null) }
             val state = _uiState.value
-            val cfg = state.config
-            val piBase = client.normalizeBaseUrl(state.piUrl)
-            val isApiSource = state.status.source == DataSourceType.API
+            val primary = state.radioUrl.ifBlank { state.config.radioUrl }.ifBlank { RadioDebugClient.DEFAULT_RADIO_URL }
 
-            val formattedApiUrl = RadioDebugClient.formatApiUrl(
-                template = cfg.apiUrl,
-                lat = cfg.centerLat,
-                lon = cfg.centerLon,
-                distMiles = state.radarZoomMiles
-            )
-
-            val primaryUrl: String
-            val fallbackUrls: List<String>
-            if (isApiSource) {
-                primaryUrl = formattedApiUrl
-                fallbackUrls = listOf(
-                    "$piBase/api/aircraft",
-                    cfg.radioUrl,
-                    state.radioUrl
-                )
-            } else {
-                primaryUrl = cfg.radioUrl.ifBlank { state.radioUrl }
-                fallbackUrls = listOf(
-                    "$piBase/api/aircraft",
-                    state.radioUrl,
-                    "$piBase/data/aircraft.json",
-                    formattedApiUrl
-                )
-            }
-
-            when (val res = radioClient.fetchAircraft(primaryUrl, fallbackUrls)) {
+            when (val res = radioClient.fetchAircraft(primary, emptyList())) {
                 is RadioFetchResult.Success -> {
                     _uiState.update {
                         it.copy(
                             radioLoading = false,
                             radioSnapshot = res.snapshot,
                             radioError = null
+                        )
+                    }
+                }
+                is RadioFetchResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            radioLoading = false,
+                            radioSnapshot = null,
+                            radioError = res.message
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Fetches public web feed telemetry from the configured aggregator API.
+     */
+    fun fetchWebFeed() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(webFeedLoading = true, webFeedError = null) }
+            val state = _uiState.value
+            val target = state.webFeedUrl.ifBlank {
+                deriveWebFeedUrl(state.config, state.radarZoomMiles)
+            }
+            when (val res = radioClient.fetchAircraft(target, emptyList())) {
+                is RadioFetchResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            webFeedLoading = false,
+                            webFeedSnapshot = res.snapshot,
+                            webFeedError = null
+                        )
+                    }
+                }
+                is RadioFetchResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            webFeedLoading = false,
+                            webFeedSnapshot = null,
+                            webFeedError = res.message
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Feed fetcher for the Live Radar projector preview. Respects control panel data source (radio vs API).
+     * Updates radarSnapshot independently so it never pollutes or overwrites the Radio Debug page.
+     */
+    fun fetchLiveRadarFeed() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(radarLoading = true, radarError = null) }
+            val state = _uiState.value
+            val cfg = state.config
+            val isApiSource = state.status.source == DataSourceType.API
+
+            val targetUrl = if (isApiSource) {
+                deriveWebFeedUrl(cfg, state.radarZoomMiles)
+            } else {
+                state.radioUrl.ifBlank { cfg.radioUrl }.ifBlank { RadioDebugClient.DEFAULT_RADIO_URL }
+            }
+
+            when (val res = radioClient.fetchAircraft(targetUrl, emptyList())) {
+                is RadioFetchResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            radarLoading = false,
+                            radarSnapshot = res.snapshot,
+                            radarError = null
                         )
                     }
                 }
@@ -533,9 +689,9 @@ class SkylightViewModel(
                     )
                     _uiState.update {
                         it.copy(
-                            radioLoading = false,
-                            radioSnapshot = fallbackSnapshot,
-                            radioError = null
+                            radarLoading = false,
+                            radarSnapshot = fallbackSnapshot,
+                            radarError = null
                         )
                     }
                 }
@@ -550,14 +706,24 @@ class SkylightViewModel(
         if (nextState) {
             radioJob = viewModelScope.launch {
                 while (isActive) {
-                    fetchRadioDebug()
+                    fetchRadioDump()
                     delay(2500L)
                 }
             }
         }
     }
 
-    fun clearRadioError() {
-        _uiState.update { it.copy(radioError = null) }
+    fun toggleWebFeedAutoRefresh(enabled: Boolean? = null) {
+        val nextState = enabled ?: !_uiState.value.webFeedAutoRefresh
+        _uiState.update { it.copy(webFeedAutoRefresh = nextState) }
+        webFeedJob?.cancel()
+        if (nextState) {
+            webFeedJob = viewModelScope.launch {
+                while (isActive) {
+                    fetchWebFeed()
+                    delay(3000L)
+                }
+            }
+        }
     }
 }

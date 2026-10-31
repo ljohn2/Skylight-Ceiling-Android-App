@@ -254,8 +254,6 @@ class PiControlClient {
             return clean == "http://skylight.local" ||
                    clean == "https://skylight.local" ||
                    clean == "skylight.local" ||
-                   clean == "upload" ||
-                   clean == "http://upload" ||
                    clean.contains("raspberrypi.local")
         }
 

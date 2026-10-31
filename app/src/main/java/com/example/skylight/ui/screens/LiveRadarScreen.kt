@@ -97,6 +97,8 @@ fun LiveRadarScreen(
     onResetZoom: (Double) -> Unit,
     onSelectAircraft: (String?) -> Unit,
     onTogglePolling: (Boolean?) -> Unit,
+    onToggleFeedSource: () -> Unit = {},
+    onToggleMirror: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     BackHandler { onNavigateBack() }
@@ -107,7 +109,7 @@ fun LiveRadarScreen(
     val mirrorX = uiState.config.mirrorX
     val mirrorY = uiState.config.mirrorY
 
-    val aircraftList = uiState.radioSnapshot?.aircraft ?: emptyList()
+    val aircraftList = uiState.radarSnapshot?.aircraft ?: emptyList()
     val selectedAircraft = remember(aircraftList, uiState.selectedAircraftHex) {
         aircraftList.firstOrNull { it.hex == uiState.selectedAircraftHex }
     }
@@ -216,16 +218,19 @@ fun LiveRadarScreen(
                 }
             }
 
-            // Mirrored Settings Bar reflecting choices from Control Panel
+            // Interactive Settings Bar synced with Control Panel
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
+                    onClick = onToggleMirror,
                     shape = RoundedCornerShape(8.dp),
                     color = ElevatedCockpitSurface.copy(alpha = 0.85f),
-                    modifier = Modifier.border(1.dp, if (mirrorX || mirrorY) TelemetryCyan.copy(alpha = 0.6f) else GridLineBlue, RoundedCornerShape(8.dp))
+                    modifier = Modifier
+                        .border(1.dp, if (mirrorX || mirrorY) TelemetryCyan.copy(alpha = 0.6f) else GridLineBlue, RoundedCornerShape(8.dp))
+                        .testTag("radar_mirror_toggle_button")
                 ) {
                     val mirrorDesc = buildString {
                         append("MIRROR: ")
@@ -238,23 +243,37 @@ fun LiveRadarScreen(
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Medium,
                         color = if (mirrorX || mirrorY) TelemetryCyan else MutedSlate,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                     )
                 }
 
                 Surface(
+                    onClick = onToggleFeedSource,
                     shape = RoundedCornerShape(8.dp),
                     color = ElevatedCockpitSurface.copy(alpha = 0.85f),
-                    modifier = Modifier.border(1.dp, GridLineBlue, RoundedCornerShape(8.dp))
+                    modifier = Modifier
+                        .border(1.dp, TelemetryCyan.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                        .testTag("radar_feed_source_button")
                 ) {
-                    Text(
-                        text = "FEED: ${uiState.status.source.label}",
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Medium,
-                        color = LuminousIce,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "FEED: ${uiState.status.source.label}",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Medium,
+                            color = LuminousIce
+                        )
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Switch Feed Source",
+                            tint = TelemetryCyan,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
                 }
 
                 if (uiState.config.airport.runways.isNotEmpty()) {
@@ -425,20 +444,20 @@ fun LiveRadarScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            // Zoom buttons grouped in a capsule
+                            // Zoom buttons grouped in a capsule with generous spacing between + and -
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(20.dp),
                                 modifier = Modifier
-                                    .background(ElevatedCockpitSurface.copy(alpha = 0.92f), RoundedCornerShape(24.dp))
-                                    .border(1.dp, GridLineBlue, RoundedCornerShape(24.dp))
-                                    .padding(4.dp)
+                                    .background(ElevatedCockpitSurface.copy(alpha = 0.92f), RoundedCornerShape(28.dp))
+                                    .border(1.dp, GridLineBlue, RoundedCornerShape(28.dp))
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
                                 IconButton(
                                     onClick = onZoomIn,
                                     modifier = Modifier
                                         .testTag("radar_zoom_in_button")
-                                        .size(40.dp)
+                                        .size(48.dp)
                                         .clip(CircleShape)
                                         .background(DeepSpaceSurface)
                                 ) {
@@ -446,7 +465,7 @@ fun LiveRadarScreen(
                                         imageVector = Icons.Default.Add,
                                         contentDescription = stringResource(R.string.btn_zoom_in),
                                         tint = LuminousIce,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(22.dp)
                                     )
                                 }
 
@@ -454,20 +473,20 @@ fun LiveRadarScreen(
                                     onClick = onZoomOut,
                                     modifier = Modifier
                                         .testTag("radar_zoom_out_button")
-                                        .size(40.dp)
+                                        .size(48.dp)
                                         .clip(CircleShape)
                                         .background(DeepSpaceSurface)
                                 ) {
                                     Text(
                                         text = "−",
-                                        fontSize = 22.sp,
+                                        fontSize = 26.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = LuminousIce
                                     )
                                 }
                             }
 
-                            // Dedicated Location Center Button with 16dp spacing from Zoom buttons
+                            // Dedicated Location Center Button with 18dp spacing from Zoom buttons
                             IconButton(
                                 onClick = { onResetZoom(uiState.config.radiusMiles) },
                                 modifier = Modifier
@@ -816,44 +835,72 @@ private fun DrawScope.drawAircraftBlip(
     if (isSelected) {
         drawCircle(
             color = TelemetryCyan.copy(alpha = 0.35f),
-            radius = 18f,
+            radius = 28f,
             center = center
         )
         drawCircle(
             color = TelemetryCyan,
-            radius = 14f,
+            radius = 22f,
             center = center,
-            style = Stroke(width = 2f)
+            style = Stroke(width = 2.5f)
         )
     }
 
-    // Directional triangle pointing along track respecting mirror settings
+    // Directional airplane silhouette pointing along track respecting mirror settings
     var angleDeg = trkDeg - 90.0
     if (mirrorX) angleDeg = 180.0 - angleDeg
     if (mirrorY) angleDeg = -angleDeg
     val angleRad = Math.toRadians(angleDeg)
 
-    val headSize = 9f
-    val wingSize = 6f
+    // Substantially larger airplane geometry (nose, swept wings, fuselage, and tail)
+    val noseLen = 22f
+    val wingLen = 16f
+    val wingNotch = 6f
+    val tailLen = 10f
+    val tailNotch = 4f
 
-    val tip = Offset(
-        center.x + (headSize * cos(angleRad)).toFloat(),
-        center.y + (headSize * sin(angleRad)).toFloat()
+    val nose = Offset(
+        center.x + (noseLen * cos(angleRad)).toFloat(),
+        center.y + (noseLen * sin(angleRad)).toFloat()
     )
-    val left = Offset(
-        center.x + (wingSize * cos(angleRad + Math.toRadians(140.0))).toFloat(),
-        center.y + (wingSize * sin(angleRad + Math.toRadians(140.0))).toFloat()
+    val leftWing = Offset(
+        center.x + (wingLen * cos(angleRad + Math.toRadians(132.0))).toFloat(),
+        center.y + (wingLen * sin(angleRad + Math.toRadians(132.0))).toFloat()
     )
-    val right = Offset(
-        center.x + (wingSize * cos(angleRad - Math.toRadians(140.0))).toFloat(),
-        center.y + (wingSize * sin(angleRad - Math.toRadians(140.0))).toFloat()
+    val leftBody = Offset(
+        center.x + (wingNotch * cos(angleRad + Math.toRadians(155.0))).toFloat(),
+        center.y + (wingNotch * sin(angleRad + Math.toRadians(155.0))).toFloat()
+    )
+    val leftTail = Offset(
+        center.x + (tailLen * cos(angleRad + Math.toRadians(168.0))).toFloat(),
+        center.y + (tailLen * sin(angleRad + Math.toRadians(168.0))).toFloat()
+    )
+    val tailCenter = Offset(
+        center.x - (tailNotch * cos(angleRad)).toFloat(),
+        center.y - (tailNotch * sin(angleRad)).toFloat()
+    )
+    val rightTail = Offset(
+        center.x + (tailLen * cos(angleRad - Math.toRadians(168.0))).toFloat(),
+        center.y + (tailLen * sin(angleRad - Math.toRadians(168.0))).toFloat()
+    )
+    val rightBody = Offset(
+        center.x + (wingNotch * cos(angleRad - Math.toRadians(155.0))).toFloat(),
+        center.y + (wingNotch * sin(angleRad - Math.toRadians(155.0))).toFloat()
+    )
+    val rightWing = Offset(
+        center.x + (wingLen * cos(angleRad - Math.toRadians(132.0))).toFloat(),
+        center.y + (wingLen * sin(angleRad - Math.toRadians(132.0))).toFloat()
     )
 
     val path = Path().apply {
-        moveTo(tip.x, tip.y)
-        lineTo(left.x, left.y)
-        lineTo(center.x, center.y)
-        lineTo(right.x, right.y)
+        moveTo(nose.x, nose.y)
+        lineTo(leftWing.x, leftWing.y)
+        lineTo(leftBody.x, leftBody.y)
+        lineTo(leftTail.x, leftTail.y)
+        lineTo(tailCenter.x, tailCenter.y)
+        lineTo(rightTail.x, rightTail.y)
+        lineTo(rightBody.x, rightBody.y)
+        lineTo(rightWing.x, rightWing.y)
         close()
     }
 
@@ -863,18 +910,18 @@ private fun DrawScope.drawAircraftBlip(
     val labelText = target.aircraft.displayCallsign
     val labelPaint = Paint().apply {
         this.color = if (isSelected) Color.White.toArgb() else LuminousIce.copy(alpha = 0.85f).toArgb()
-        textSize = 20f
+        textSize = 21f
         isAntiAlias = true
         typeface = android.graphics.Typeface.MONOSPACE
         if (isSelected) isFakeBoldText = true
         textAlign = if (mirrorX) Paint.Align.RIGHT else Paint.Align.LEFT
     }
 
-    val labelX = if (mirrorX) center.x - 10f else center.x + 10f
+    val labelX = if (mirrorX) center.x - 18f else center.x + 18f
     drawContext.canvas.nativeCanvas.drawText(
         labelText,
         labelX,
-        center.y + 4f,
+        center.y + 5f,
         labelPaint
     )
 }

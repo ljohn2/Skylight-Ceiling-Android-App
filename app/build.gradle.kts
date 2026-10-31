@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.secrets)
 }
 
 android {
@@ -11,11 +10,9 @@ android {
     defaultConfig {
         applicationId = "com.aistudio.skylight.rpkxqm"
         minSdk = 24
-        targetSdk = 36
-        versionCode = 13
-        versionName = "13.0"
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        targetSdk = 37
+        versionCode = 14
+        versionName = "14.0"
     }
 
     signingConfigs {
@@ -57,24 +54,12 @@ android {
 
     buildFeatures {
         compose = true
-        buildConfig = true
     }
 
     lint {
         checkReleaseBuilds = false
         abortOnError = false
     }
-
-    testOptions {
-        unitTests {
-            isIncludeAndroidResources = true
-        }
-    }
-}
-
-secrets {
-    propertiesFileName = ".env"
-    defaultPropertiesFileName = ".env.example"
 }
 
 dependencies {
@@ -89,12 +74,6 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.core)
-    // implementation(libs.androidx.material.icons.extended)
 
-    testImplementation(libs.junit)
-    testImplementation(libs.robolectric)
-    testImplementation(libs.androidx.test.core)
-    testImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
-    debugImplementation(libs.androidx.ui.test.manifest)
 }

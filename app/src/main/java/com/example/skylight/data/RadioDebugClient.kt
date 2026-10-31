@@ -23,7 +23,7 @@ class RadioDebugClient {
 
         fun deriveRadioUrl(piUrl: String): String {
             val trimmed = piUrl.trim()
-            if (trimmed.isBlank() || trimmed.equals("upload", ignoreCase = true)) {
+            if (trimmed.isBlank()) {
                 return DEFAULT_RADIO_URL
             }
             return try {
@@ -35,14 +35,14 @@ class RadioDebugClient {
                 val uri = java.net.URI(withScheme)
                 val scheme = uri.scheme ?: "http"
                 val host = uri.host ?: trimmed.substringAfter("://").substringBefore(":").substringBefore("/")
-                if (host.isNotBlank() && !host.equals("upload", ignoreCase = true)) {
+                if (host.isNotBlank()) {
                     "$scheme://$host:8080/data/aircraft.json"
                 } else {
                     DEFAULT_RADIO_URL
                 }
             } catch (_: Exception) {
                 val host = trimmed.substringAfter("://").substringBefore(":").substringBefore("/")
-                if (host.isNotBlank() && !host.equals("upload", ignoreCase = true)) {
+                if (host.isNotBlank()) {
                     "http://$host:8080/data/aircraft.json"
                 } else {
                     DEFAULT_RADIO_URL
@@ -99,9 +99,7 @@ class RadioDebugClient {
                 if (code in 200..299) {
                     val body = BufferedReader(InputStreamReader(conn.inputStream, Charsets.UTF_8)).use { it.readText() }
                     val snapshot = parseSnapshot(body, fullUrl)
-                    if (snapshot.aircraft.isNotEmpty() || targets.size == 1) {
-                        return@withContext RadioFetchResult.Success(snapshot)
-                    }
+                    return@withContext RadioFetchResult.Success(snapshot)
                 } else {
                     lastCode = code
                     lastError = "HTTP $code: ${conn.responseMessage ?: "Error"}"

@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import com.example.skylight.R
 import com.example.skylight.data.RadioDebugClient
 import com.example.skylight.model.RadioAircraft
+import com.example.skylight.ui.DebugSourceMode
 import com.example.skylight.ui.SkylightControlUiState
 import com.example.skylight.ui.theme.AltitudeGold
 import com.example.skylight.ui.theme.AltitudeSkyBlue
@@ -92,7 +93,6 @@ import com.example.skylight.ui.theme.LuminousIce
 import com.example.skylight.ui.theme.MutedSlate
 import com.example.skylight.ui.theme.ObsidianBlack
 import com.example.skylight.ui.theme.TelemetryCyan
-import java.net.URI
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -102,9 +102,13 @@ import java.util.Locale
 fun RadioDebugScreen(
     uiState: SkylightControlUiState,
     onNavigateBack: () -> Unit,
+    onSetDebugMode: (DebugSourceMode) -> Unit,
     onSetRadioUrl: (String) -> Unit,
     onFetchRadio: () -> Unit,
     onToggleAutoRefresh: (Boolean?) -> Unit,
+    onSetWebFeedUrl: (String) -> Unit,
+    onFetchWebFeed: () -> Unit,
+    onToggleWebFeedAutoRefresh: (Boolean?) -> Unit,
     modifier: Modifier = Modifier
 ) {
     BackHandler { onNavigateBack() }
@@ -115,7 +119,15 @@ fun RadioDebugScreen(
     var searchQuery by remember { mutableStateOf("") }
     var onlyWithPosition by remember { mutableStateOf(false) }
 
-    val snapshot = uiState.radioSnapshot
+    val isRadioDump = uiState.debugMode == DebugSourceMode.RADIO_DUMP
+    val snapshot = if (isRadioDump) uiState.radioSnapshot else uiState.webFeedSnapshot
+    val currentUrl = if (isRadioDump) uiState.radioUrl else uiState.webFeedUrl
+    val onSetUrl = if (isRadioDump) onSetRadioUrl else onSetWebFeedUrl
+    val isLoading = if (isRadioDump) uiState.radioLoading else uiState.webFeedLoading
+    val currentError = if (isRadioDump) uiState.radioError else uiState.webFeedError
+    val onFetch = if (isRadioDump) onFetchRadio else onFetchWebFeed
+    val autoRefresh = if (isRadioDump) uiState.radioAutoRefresh else uiState.webFeedAutoRefresh
+    val onToggleRefresh = if (isRadioDump) onToggleAutoRefresh else onToggleWebFeedAutoRefresh
 
     Box(
         modifier = modifier
@@ -155,13 +167,17 @@ fun RadioDebugScreen(
                     Spacer(modifier = Modifier.width(6.dp))
                     Column {
                         Text(
-                            text = stringResource(R.string.title_radio_debug),
+                            text = if (isRadioDump) "Radio Dump Debug" else "Web Feed Debug",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = LuminousIce
                         )
                         Text(
-                            text = stringResource(R.string.subtitle_radio_debug),
+                            text = if (isRadioDump) {
+                                "Direct receiver dump (dump1090 / readsb)"
+                            } else {
+                                "Public ADS-B REST aggregator feed"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MutedSlate
                         )
@@ -174,7 +190,7 @@ fun RadioDebugScreen(
                     color = DeepSpaceSurface,
                     modifier = Modifier.border(
                         1.dp,
-                        if (uiState.radioError != null) EmergencyCoral
+                        if (currentError != null) EmergencyCoral
                         else if (snapshot != null) EmeraldStatus
                         else GridLineBlue,
                         RoundedCornerShape(20.dp)
@@ -189,19 +205,19 @@ fun RadioDebugScreen(
                                 .size(8.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    if (uiState.radioLoading) AltitudeGold
-                                    else if (uiState.radioError != null) EmergencyCoral
+                                    if (isLoading) AltitudeGold
+                                    else if (currentError != null) EmergencyCoral
                                     else if (snapshot != null) EmeraldStatus
                                     else MutedSlate
                                 )
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (uiState.radioLoading) {
+                            text = if (isLoading) {
                                 "Polling…"
                             } else if (snapshot != null) {
                                 "${snapshot.aircraft.size} ac"
-                            } else if (uiState.radioError != null) {
+                            } else if (currentError != null) {
                                 "Offline"
                             } else {
                                 "Ready"
@@ -213,7 +229,52 @@ fun RadioDebugScreen(
                 }
             }
 
-            // Radio Endpoint Configuration Card
+            // Mode Selector: Radio Dump vs Web Feed
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = isRadioDump,
+                    onClick = { onSetDebugMode(DebugSourceMode.RADIO_DUMP) },
+                    label = {
+                        Text(
+                            text = "Radio Dump (dump1090 / readsb)",
+                            fontWeight = if (isRadioDump) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = TelemetryCyan,
+                        selectedLabelColor = ObsidianBlack,
+                        containerColor = DeepSpaceSurface,
+                        labelColor = LuminousIce
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("debug_mode_radio_chip")
+                )
+                FilterChip(
+                    selected = !isRadioDump,
+                    onClick = { onSetDebugMode(DebugSourceMode.WEB_FEED) },
+                    label = {
+                        Text(
+                            text = "Web Feed (Public API)",
+                            fontWeight = if (!isRadioDump) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = AltitudeTeal,
+                        selectedLabelColor = ObsidianBlack,
+                        containerColor = DeepSpaceSurface,
+                        labelColor = LuminousIce
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("debug_mode_web_chip")
+                )
+            }
+
+            // Endpoint Configuration Card
             Card(
                 colors = CardDefaults.cardColors(containerColor = DeepSpaceSurface),
                 shape = RoundedCornerShape(14.dp),
@@ -225,11 +286,28 @@ fun RadioDebugScreen(
                     modifier = Modifier.padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.label_radio_endpoint).uppercase(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MutedSlate
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isRadioDump) {
+                                "RECEIVER RADIO DUMP (aircraft.json)"
+                            } else {
+                                "PUBLIC WEB AGGREGATOR FEED (ADS-B API)"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isRadioDump) TelemetryCyan else AltitudeTeal
+                        )
+                        Text(
+                            text = if (isRadioDump) "Hardware Only (No Web Fallback)" else "Aggregator REST API",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            color = MutedSlate
+                        )
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -237,9 +315,14 @@ fun RadioDebugScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedTextField(
-                            value = uiState.radioUrl,
-                            onValueChange = onSetRadioUrl,
-                            placeholder = { Text(RadioDebugClient.DEFAULT_RADIO_URL) },
+                            value = currentUrl,
+                            onValueChange = onSetUrl,
+                            placeholder = {
+                                Text(
+                                    if (isRadioDump) RadioDebugClient.DEFAULT_RADIO_URL
+                                    else "https://opendata.adsb.fi/api/v3/lat/.../lon/.../dist/..."
+                                )
+                            },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Uri,
@@ -251,15 +334,15 @@ fun RadioDebugScreen(
                         )
 
                         Button(
-                            onClick = onFetchRadio,
-                            enabled = !uiState.radioLoading,
+                            onClick = onFetch,
+                            enabled = !isLoading,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = TelemetryCyan,
+                                containerColor = if (isRadioDump) TelemetryCyan else AltitudeTeal,
                                 contentColor = ObsidianBlack
                             ),
                             modifier = Modifier.testTag("radio_fetch_button")
                         ) {
-                            if (uiState.radioLoading) {
+                            if (isLoading) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(16.dp),
                                     strokeWidth = 2.dp,
@@ -283,30 +366,43 @@ fun RadioDebugScreen(
                     // Auto-Refresh Toggle
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = stringResource(R.string.btn_radio_auto_refresh),
+                            text = if (isRadioDump) {
+                                "Strictly test ADS-B radio dump; no web fallback or simulated traffic."
+                            } else {
+                                "Aggregated web telemetry for testing when radio receiver is offline."
+                            },
                             style = MaterialTheme.typography.labelSmall,
-                            color = MutedSlate
+                            color = MutedSlate,
+                            modifier = Modifier.weight(1f)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Switch(
-                            checked = uiState.radioAutoRefresh,
-                            onCheckedChange = { onToggleAutoRefresh(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = ObsidianBlack,
-                                checkedTrackColor = TelemetryCyan
-                            ),
-                            modifier = Modifier.testTag("radio_auto_refresh_toggle")
-                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = stringResource(R.string.btn_radio_auto_refresh),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MutedSlate
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Switch(
+                                checked = autoRefresh,
+                                onCheckedChange = { onToggleRefresh(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = ObsidianBlack,
+                                    checkedTrackColor = if (isRadioDump) TelemetryCyan else AltitudeTeal
+                                ),
+                                modifier = Modifier.testTag("radio_auto_refresh_toggle")
+                            )
+                        }
                     }
                 }
             }
 
-            // Error display with emulator diagnostic hint
-            if (uiState.radioError != null) {
+            // Error display with diagnostic hint
+            if (currentError != null) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = EmergencyCoral.copy(alpha = 0.15f)),
                     shape = RoundedCornerShape(10.dp),
@@ -328,14 +424,14 @@ fun RadioDebugScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "Failed to load radio data: ${uiState.radioError}",
+                                text = "Failed to load telemetry: $currentError",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = EmergencyCoral,
                                 fontWeight = FontWeight.SemiBold
                             )
-                            if (uiState.radioUrl.contains("localhost")) {
+                            if (isRadioDump && currentUrl.contains("localhost")) {
                                 Text(
-                                    text = "Tip: When running inside the Android Emulator, use 10.0.2.2:8080 to connect to your host machine.",
+                                    text = "Tip: When running inside the Android Emulator, use 10.0.2.2:8080 to connect to your host receiver.",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MutedSlate
                                 )
@@ -496,9 +592,9 @@ fun RadioDebugScreen(
                             )
                             if (snapshot == null) {
                                 Text(
-                                    text = "Tap 'Fetch' to connect to ${uiState.radioUrl}",
+                                    text = "Tap 'Fetch' to connect to $currentUrl",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = TelemetryCyan
+                                    color = if (isRadioDump) TelemetryCyan else AltitudeTeal
                                 )
                             }
                         }

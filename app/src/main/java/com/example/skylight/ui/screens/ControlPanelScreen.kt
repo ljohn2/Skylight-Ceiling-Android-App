@@ -1,5 +1,15 @@
 package com.example.skylight.ui.screens
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationManager
+import android.os.Build
+import android.os.CancellationSignal
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -57,6 +67,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -64,6 +75,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import java.util.Locale
 import com.example.skylight.R
 import com.example.skylight.data.PiControlClient
 import com.example.skylight.model.AggregatorPresets
@@ -105,6 +118,8 @@ fun ControlPanelScreen(
     onUpdateConfig: ((SkylightConfig) -> SkylightConfig) -> Unit,
     onSwitchSource: (DataSourceType) -> Unit,
     onSearchLocation: (String) -> Unit,
+    onSetPreciseLocation: (Double, Double, Boolean) -> Unit = { _, _, _ -> },
+    onShowFeedback: (String) -> Unit = {},
     onImportAirport: (String) -> Unit,
     onSaveProfile: () -> Unit,
     onSwitchProfile: (LocationProfile) -> Unit,
@@ -115,11 +130,54 @@ fun ControlPanelScreen(
     modifier: Modifier = Modifier
 ) {
     val cfg = uiState.config
+    val context = LocalContext.current
     val scrollState = rememberScrollState()
     var locationInput by remember { mutableStateOf("") }
+    var latInput by remember(cfg.centerLat) {
+        mutableStateOf(String.format(Locale.US, "%.4f", cfg.centerLat))
+    }
+    var lonInput by remember(cfg.centerLon) {
+        mutableStateOf(String.format(Locale.US, "%.4f", cfg.centerLon))
+    }
+    var isFetchingGps by remember { mutableStateOf(false) }
     var airportCodeInput by remember(cfg.airport.icao) { mutableStateOf(cfg.airport.icao) }
     var showAddUrlDialog by remember { mutableStateOf(false) }
     var customUrlInput by remember { mutableStateOf("") }
+
+    val applyDeviceLocation: (Location) -> Unit = { loc ->
+        isFetchingGps = false
+        val latStr = String.format(Locale.US, "%.4f", loc.latitude)
+        val lonStr = String.format(Locale.US, "%.4f", loc.longitude)
+        latInput = latStr
+        lonInput = lonStr
+        locationInput = "$latStr, $lonStr"
+        onSetPreciseLocation(loc.latitude, loc.longitude, true)
+    }
+
+    val fetchDeviceGpsLocation: () -> Unit = {
+        isFetchingGps = true
+        fetchCurrentDeviceLocation(
+            context = context,
+            onSuccess = applyDeviceLocation,
+            onError = { errMsg ->
+                isFetchingGps = false
+                onShowFeedback(errMsg)
+            }
+        )
+    }
+
+    val locationPermissionsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        val fineGranted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseGranted = grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (fineGranted || coarseGranted) {
+            fetchDeviceGpsLocation()
+        } else {
+            isFetchingGps = false
+            onShowFeedback("Location permission denied — grant permission to autofill GPS coordinates")
+        }
+    }
 
     Box(
         modifier = modifier
@@ -195,12 +253,8 @@ fun ControlPanelScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedTextField(
-                        value = if (uiState.piUrl.equals("upload", ignoreCase = true)) "" else uiState.piUrl,
-                        onValueChange = { input ->
-                            if (!input.equals("upload", ignoreCase = true)) {
-                                onSetPiUrl(input)
-                            }
-                        },
+                        value = uiState.piUrl,
+                        onValueChange = onSetPiUrl,
                         label = { Text(stringResource(R.string.label_pi_host)) },
                         placeholder = { Text("http://skylight.local:3000") },
                         singleLine = true,
@@ -444,6 +498,92 @@ fun ControlPanelScreen(
                             fontFamily = FontFamily.Monospace
                         )
                     }
+                }
+
+                // Latitude & Longitude coordinate fields + Precise Location button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = latInput,
+                        onValueChange = { value ->
+                            latInput = value
+                            val parsedLat = value.toDoubleOrNull()
+                            val parsedLon = lonInput.toDoubleOrNull() ?: cfg.centerLon
+                            if (parsedLat != null && parsedLat in -90.0..90.0) {
+                                onSetPreciseLocation(parsedLat, parsedLon, false)
+                            }
+                        },
+                        label = { Text(stringResource(R.string.label_latitude)) },
+                        placeholder = { Text("37.6213") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("latitude_input")
+                    )
+                    OutlinedTextField(
+                        value = lonInput,
+                        onValueChange = { value ->
+                            lonInput = value
+                            val parsedLon = value.toDoubleOrNull()
+                            val parsedLat = latInput.toDoubleOrNull() ?: cfg.centerLat
+                            if (parsedLon != null && parsedLon in -180.0..180.0) {
+                                onSetPreciseLocation(parsedLat, parsedLon, false)
+                            }
+                        },
+                        label = { Text(stringResource(R.string.label_longitude)) },
+                        placeholder = { Text("-122.3790") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("longitude_input")
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        val hasFine = ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.ACCESS_FINE_LOCATION
+                        ) == PackageManager.PERMISSION_GRANTED
+                        val hasCoarse = ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        ) == PackageManager.PERMISSION_GRANTED
+
+                        if (hasFine || hasCoarse) {
+                            fetchDeviceGpsLocation()
+                        } else {
+                            locationPermissionsLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                )
+                            )
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = TelemetryCyan,
+                        contentColor = ObsidianBlack
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("precise_location_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isFetchingGps) "Acquiring Precise Location…" else stringResource(R.string.btn_precise_location),
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
 
                 Row(
@@ -1268,3 +1408,69 @@ private fun ControlToggleRow(
         )
     }
 }
+
+@SuppressLint("MissingPermission")
+private fun fetchCurrentDeviceLocation(
+    context: Context,
+    onSuccess: (Location) -> Unit,
+    onError: (String) -> Unit
+) {
+    try {
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        if (locationManager == null) {
+            onError("Location service unavailable on this device")
+            return
+        }
+
+        val providers = listOf(
+            LocationManager.GPS_PROVIDER,
+            LocationManager.NETWORK_PROVIDER,
+            LocationManager.PASSIVE_PROVIDER
+        )
+
+        var bestLastKnown: Location? = null
+        for (provider in providers) {
+            try {
+                if (locationManager.isProviderEnabled(provider)) {
+                    val loc = locationManager.getLastKnownLocation(provider)
+                    if (loc != null) {
+                        if (bestLastKnown == null || loc.accuracy < bestLastKnown.accuracy) {
+                            bestLastKnown = loc
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+
+        val activeProvider = when {
+            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
+            locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+            else -> null
+        }
+
+        if (activeProvider != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            locationManager.getCurrentLocation(
+                activeProvider,
+                CancellationSignal(),
+                context.mainExecutor
+            ) { location ->
+                val resolved = location ?: bestLastKnown
+                if (resolved != null) {
+                    onSuccess(resolved)
+                } else {
+                    onError("Unable to acquire GPS fix — ensure device Location is enabled")
+                }
+            }
+        } else if (bestLastKnown != null) {
+            onSuccess(bestLastKnown)
+        } else {
+            onError("Location services disabled — enable GPS in system settings")
+        }
+    } catch (e: SecurityException) {
+        onError("Location permission is required to read GPS coordinates")
+    } catch (e: Exception) {
+        onError("Could not read precise location: ${e.localizedMessage ?: "unknown error"}")
+    }
+}
+

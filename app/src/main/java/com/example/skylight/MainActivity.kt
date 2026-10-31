@@ -1,9 +1,14 @@
 package com.example.skylight
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,10 +26,13 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.skylight.ui.AppScreen
@@ -56,6 +64,38 @@ fun SkylightControlApp(
     viewModel: SkylightViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    val nearbyPermissionsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { /* Granted or denied handled gracefully for LAN discovery */ }
+
+    LaunchedEffect(Unit) {
+        val permissionsToRequest = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.NEARBY_WIFI_DEVICES
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    add(Manifest.permission.NEARBY_WIFI_DEVICES)
+                }
+            }
+            if (Build.VERSION.SDK_INT >= 37) {
+                val localNetworkPerm = "android.permission.ACCESS_LOCAL_NETWORK"
+                if (ContextCompat.checkSelfPermission(
+                        context,
+                        localNetworkPerm
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    add(localNetworkPerm)
+                }
+            }
+        }
+        if (permissionsToRequest.isNotEmpty()) {
+            nearbyPermissionsLauncher.launch(permissionsToRequest.toTypedArray())
+        }
+    }
 
     Scaffold(
         containerColor = ObsidianBlack,
@@ -144,6 +184,8 @@ fun SkylightControlApp(
                     onUpdateConfig = viewModel::updateConfig,
                     onSwitchSource = viewModel::switchDataSource,
                     onSearchLocation = viewModel::searchLocation,
+                    onSetPreciseLocation = viewModel::setPreciseLocation,
+                    onShowFeedback = viewModel::setFeedbackMessage,
                     onImportAirport = viewModel::importAirportRunways,
                     onSaveProfile = viewModel::saveCurrentProfile,
                     onSwitchProfile = viewModel::switchToProfile,
@@ -165,6 +207,8 @@ fun SkylightControlApp(
                     onResetZoom = viewModel::setRadarZoom,
                     onSelectAircraft = viewModel::selectAircraftHex,
                     onTogglePolling = viewModel::toggleRadarPolling,
+                    onToggleFeedSource = viewModel::toggleFeedSource,
+                    onToggleMirror = viewModel::toggleMirrorX,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
@@ -174,9 +218,13 @@ fun SkylightControlApp(
                 RadioDebugScreen(
                     uiState = uiState,
                     onNavigateBack = viewModel::navigateBack,
+                    onSetDebugMode = viewModel::setDebugMode,
                     onSetRadioUrl = viewModel::setRadioUrl,
-                    onFetchRadio = viewModel::fetchRadioDebug,
+                    onFetchRadio = viewModel::fetchRadioDump,
                     onToggleAutoRefresh = viewModel::toggleRadioAutoRefresh,
+                    onSetWebFeedUrl = viewModel::setWebFeedUrl,
+                    onFetchWebFeed = viewModel::fetchWebFeed,
+                    onToggleWebFeedAutoRefresh = viewModel::toggleWebFeedAutoRefresh,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
