@@ -37,3 +37,7 @@ This app replaces the `/control` web interface on the Raspberry Pi with a dedica
 - `app/src/main/java/com/example/skylight/data/PiControlClient.kt` — HTTP client for `/api/config`, `/api/config/reset`, `/api/status`, `/api/source`, `/api/aircraft`, `/api/geocode`, and `/api/airport`.
 - `app/src/main/java/com/example/skylight/ui/SkylightViewModel.kt` — State management, periodic Pi status polling, and live config patching.
 - `app/src/main/java/com/example/skylight/ui/screens/ControlPanelScreen.kt` — Native Jetpack Compose Material 3 control interface.
+
+## Contact
+
+- Suggestions and comments go in issues
